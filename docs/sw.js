@@ -1,7 +1,7 @@
 // 撮影ノート オフライン用 Service Worker
 // 公開前に tools/bump-sw.py で CACHE の版数を上げること（古いキャッシュを確実に入れ替えるため）。
 
-const CACHE = "cg-v1";
+const CACHE = "cg-v2";
 
 const PRECACHE = [
   "./",
@@ -9,6 +9,8 @@ const PRECACHE = [
   "style.css",
   "js/data.js",
   "js/sim.js",
+  "js/exif.js",
+  "js/diagnose.js",
   "js/app.js",
   "manifest.webmanifest",
   "icon.svg",

@@ -195,6 +195,99 @@
       <p class="foot">メニューの場所はソニー公式ヘルプガイド（α7C II）で確認したものです。本体のソフトウェアのバージョンで表記が少し違うことがあります。</p>`;
   }
 
+  // ---------- 診断 ----------
+  const CHECK_SCENES = [["none", "指定なし"], ["landscape", "風景"], ["people", "人"], ["pet", "ペット"], ["food", "料理"], ["parade", "動くもの"], ["night", "夜／室内"]];
+  let checkUrl = null;
+
+  // 縮小した絵から明るさの統計を取る（写真そのものは保存も送信もしない）
+  function lumaStats(img) {
+    const k = 256 / Math.max(img.naturalWidth, img.naturalHeight);
+    const w = Math.max(1, Math.round(img.naturalWidth * Math.min(1, k))), h = Math.max(1, Math.round(img.naturalHeight * Math.min(1, k)));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data;
+    let sum = 0, hi = 0, lo = 0;
+    const n = w * h;
+    for (let i = 0; i < d.length; i += 4) {
+      const y = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+      sum += y;
+      if (y > 0.97) hi++;
+      if (y < 0.03) lo++;
+    }
+    return { mean: sum / n, hi: hi / n, lo: lo / n };
+  }
+
+  function checkPage() {
+    setTab("check", false);
+    let scene = store.get("checkScene", "none");
+    let exif = null, stats = null, state = "empty"; // empty | noexif | ready
+    view.innerHTML = `
+      <div class="page-head"><h1>写真から振り返る</h1><p>写真は端末の中で読むだけで、送信しません</p></div>
+      <label class="read-btn pick">写真を選ぶ<input type="file" id="pick" accept="image/jpeg" hidden></label>
+      <div id="result"></div>`;
+    const result = document.getElementById("result");
+
+    const info = (e) => {
+      const v = (x) => (x == null ? null : x);
+      const mode = diagnose.modeName(e);
+      const cell = (label, val) => `<div><small>${label}</small><b class="${val ? "" : "auto"}">${val ? esc(val) : "—"}</b></div>`;
+      const bias = typeof e.bias === "number" ? (e.bias > 0 ? "+" : "") + (Math.round(e.bias * 10) / 10) : null;
+      const small = [
+        e.focal35 || e.focalLength ? `焦点距離 ${Math.round(e.focal35 || e.focalLength)}mm` : null,
+        bias != null ? `補正 ${bias}` : null,
+        e.lens ? e.lens : null,
+        e.date ? e.date.replace(/^(\d+):(\d+):(\d+)/, "$1/$2/$3") : null,
+      ].filter(Boolean);
+      return `<div class="lcd">${cell("MODE", mode)}${cell("F", v(e.fNumber) && diagnose.fmtF(e.fNumber))}${cell("SHUTTER", v(e.exposureTime) && diagnose.fmtT(e.exposureTime).replace("秒", ""))}${cell("ISO", v(e.iso) && String(e.iso))}</div>
+        <p class="lcd-note">${small.map(esc).join("　／　")}</p>`;
+    };
+
+    const drawResult = () => {
+      if (state === "empty") { result.innerHTML = ""; return; }
+      const preview = checkUrl ? `<img class="check-img" src="${checkUrl}" alt="選んだ写真">` : "";
+      if (state === "noexif") {
+        result.innerHTML = `${preview}<p class="check-none">撮影情報が残っていません。カメラから直接取り込んだJPEGを選んでください。</p>`;
+        return;
+      }
+      const items = diagnose(exif, stats, scene);
+      result.innerHTML = `
+        ${preview}${info(exif)}
+        <h2 class="sec">撮ったもの</h2>
+        <div class="cats chips" role="tablist">${CHECK_SCENES.map(([id, label]) => `<button data-scene="${id}" class="${id === scene ? "on" : ""}">${label}</button>`).join("")}</div>
+        <h2 class="sec">診断</h2>
+        <ul class="diag">${items.map((r) => `
+          <li class="${r.level}">
+            <div class="d-t">${r.level === "ok" ? "" : `<em>${r.level === "bad" ? "注意" : "確認"}</em>`}${esc(r.title)}</div>
+            <p>${esc(r.body)}</p>
+            ${r.lesson && lessonById[r.lesson] ? `<div class="links"><a href="#/lesson/${r.lesson}">講座：${esc(lessonById[r.lesson].title)}</a></div>` : ""}
+          </li>`).join("")}
+        </ul>
+        <p class="foot">Exifは撮影時の設定の記録です。ピントの位置や構図までは分かりません。</p>`;
+    };
+
+    document.getElementById("pick").onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (checkUrl) URL.revokeObjectURL(checkUrl);
+      checkUrl = URL.createObjectURL(file);
+      exif = readExif(await file.arrayBuffer());
+      stats = null;
+      if (!exif) { state = "noexif"; drawResult(); return; }
+      state = "ready";
+      const img = new Image();
+      img.onload = () => { try { stats = lumaStats(img); } catch (err) {} drawResult(); };
+      img.onerror = () => drawResult();
+      img.src = checkUrl;
+    };
+    view.onclick = (e) => {
+      const b = e.target.closest("[data-scene]");
+      if (!b) return;
+      scene = b.dataset.scene; store.set("checkScene", scene); drawResult();
+    };
+  }
+
   // ---------- 画面の切り替え ----------
   function route() {
     const [, page, id] = (location.hash || "#/").split("/");
@@ -203,6 +296,7 @@
     else if (page === "lesson") lessonDetail(id);
     else if (page === "quiz") quiz();
     else if (page === "mr") mrPage();
+    else if (page === "check") checkPage();
     else fieldList();
     window.scrollTo(0, 0);
   }
