@@ -13,7 +13,12 @@
   const sceneById = Object.fromEntries(SCENES.map((s) => [s.id, s]));
   const pad = (n) => String(n).padStart(2, "0");
 
-  function setTab(name, showBack) {
+  const GL = () => (Array.isArray(window.GLOSSARY) ? window.GLOSSARY : []);
+  const glFind = (name) => GL().find((g) => g.t === name || (g.aka || []).includes(name));
+  let navCount = 0, backing = false, backTo = "#/";
+
+  function setTab(name, showBack, fallback) {
+    backTo = fallback || "#/";
     document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("on", a.dataset.tab === name));
     backBtn.hidden = !showBack;
   }
@@ -24,7 +29,11 @@
     let cat = store.get("cat", CATEGORIES[0].id);
     const draw = () => {
       const items = SCENES.filter((s) => s.cat === cat);
+      const recent = store.get("recent", []).map((id) => sceneById[id]).filter(Boolean).slice(0, 3);
+      const presets = Array.isArray(window.MR_PRESETS) ? MR_PRESETS : [];
       view.innerHTML = `
+        ${recent.length ? `<div class="quick"><h2 class="sec">最近見た</h2><div class="links">${recent.map((r) => `<a href="#/scene/${r.id}">${esc(r.title)}</a>`).join("")}</div></div>` : ""}
+        ${presets.length ? `<div class="quick"><h2 class="sec">ダイヤル 1・2・3 早見</h2><a class="dial-ref" href="#/mr">${presets.map((m) => `<span><b>${m.no}</b>${esc(m.name)}<i>${esc(m.use)}</i></span>`).join("")}</a></div>` : ""}
         <div class="cats" role="tablist">${CATEGORIES.map((c) => `<button data-cat="${c.id}" class="${c.id === cat ? "on" : ""}">${c.label}</button>`).join("")}</div>
         <ul class="list">${items.map((s, i) => `
           <li><a href="#/scene/${s.id}">
@@ -57,21 +66,38 @@
   function sceneDetail(id) {
     const s = sceneById[id];
     if (!s) return fieldList();
-    setTab("field", true);
-    view.onclick = null;
+    setTab("field", true, "#/");
+    { const r = store.get("recent", []).filter((x) => x !== id); r.unshift(id); store.set("recent", r.slice(0, 3)); }
+    const rowVal = (k) => { const r = s.s.find((x) => x[0] === k); return r ? r[1] : null; };
+    const keyv = [["露出補正", rowVal("露出補正")], ["AF", rowVal("AF")]].filter((x) => x[1]);
     view.innerHTML = `
       <div class="page-head"><h1>${esc(s.title)}</h1><p>${esc(s.sub)}</p></div>
       ${lcd(s)}
       <p class="lcd-note">AUTO の項目はカメラが自動で決めます</p>
-      ${s.mr ? `<div class="dial"><b>${s.mr}</b>登録しておけば、モードダイヤルを ${s.mr} に回すだけ</div>` : ""}
+      ${keyv.length ? `<div class="keyv">${keyv.map(([k, v]) => `<div><small>${k}</small><b>${esc(v)}</b></div>`).join("")}</div>` : ""}
+      ${s.mr ? `<div class="dial"><b>${s.mr}</b>登録しておけば、モードダイヤルを ${s.mr} に回すだけ</div>${s.mrDiff ? `<p class="mrdiff">${esc(s.mrDiff)}</p>` : ""}` : ""}
       <h2 class="sec">設定</h2>
-      <table class="settings">${s.s.map(([k, v, why]) => `<tr><th>${esc(k)}</th><td><span class="v">${esc(v)}</span>${why ? `<span class="why">${esc(why)}</span>` : ""}</td></tr>`).join("")}</table>
+      <table class="settings">${s.s.map(([k, v, why]) => {
+        const g = glFind(k);
+        const th = g ? `<button class="term" aria-expanded="false">${esc(k)}</button>` : esc(k);
+        const gl = g ? `<tr class="gl" hidden><td colspan="2"><p>${esc(g.d)}</p>${g.op ? `<p class="op">操作：${esc(g.op)}</p>` : ""}${g.l && lessonById[g.l] ? `<div class="links"><a href="#/lesson/${g.l}">講座：${esc(lessonById[g.l].title)}</a></div>` : ""}</td></tr>` : "";
+        return `<tr><th>${th}</th><td><span class="v">${esc(v)}</span>${why ? `<span class="why">${esc(why)}</span>` : ""}</td></tr>${gl}`;
+      }).join("")}</table>
       <h2 class="sec">撮り方のコツ</h2>
       <ul class="plain">${s.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
       <h2 class="sec">このレンズで撮るとき</h2>
       <p class="lens">${esc(s.lens)}</p>
       <h2 class="sec">なぜこの設定？</h2>
-      <div class="links">${s.lessons.map((l) => `<a href="#/lesson/${l}">${esc(lessonById[l].title)}</a>`).join("")}</div>`;
+      <div class="links">${s.lessons.map((l) => `<a href="#/lesson/${l}">${esc(lessonById[l].title)}</a>`).join("")}</div>
+      <p class="final">迷ったら：撮って液晶で見て、明るさは露出補正で直す</p>`;
+    view.onclick = (e) => {
+      const b = e.target.closest(".term");
+      if (!b) return;
+      const row = b.closest("tr").nextElementSibling;
+      if (!row || !row.classList.contains("gl")) return;
+      row.hidden = !row.hidden;
+      b.setAttribute("aria-expanded", String(!row.hidden));
+    };
   }
 
   // ---------- 学ぶ ----------
@@ -80,15 +106,31 @@
     view.onclick = null;
     const read = store.get("read", {});
     const n = LESSONS.filter((l) => read[l.id]).length;
+    const qs = store.get("quiz", {});
+    const acc = (id) => {
+      let ok = 0, ng = 0;
+      QUIZ.forEach((q, i) => { if (q.l === id && qs[i]) { ok += qs[i].ok; ng += qs[i].ng; } });
+      return ok + ng ? Math.round((ok / (ok + ng)) * 100) : null;
+    };
     view.innerHTML = `
       <div class="page-head"><h1>学ぶ</h1><p>上から順に読むと、AUTOからAモードに移れます。${n} / ${LESSONS.length} 読了</p></div>
       <ul class="list">${LESSONS.map((l, i) => `
         <li><a href="#/lesson/${l.id}">
           <span class="no">${pad(i + 1)}</span><span class="t">${esc(l.title)}</span>
-          <span class="mark ${read[l.id] ? "done" : ""}">${read[l.id] ? "読了" : ""}</span>
+          <span class="mark ${read[l.id] ? "done" : ""}">${read[l.id] ? "読了" : ""}${acc(l.id) != null ? `${read[l.id] ? "　" : ""}<span class="acc">正答${acc(l.id)}%</span>` : ""}</span>
           <span class="s">${esc(l.lead)}</span>
         </a></li>`).join("")}
+        <li><a href="#/glossary"><span class="no">${pad(LESSONS.length + 1)}</span><span class="t">用語と操作場所</span><span class="s">メニューの言葉と、カメラのどこを触るか</span></a></li>
       </ul>`;
+  }
+
+  function glossaryPage() {
+    setTab("learn", true, "#/learn");
+    view.onclick = null;
+    const g = GL();
+    view.innerHTML = `
+      <div class="page-head"><h1>用語と操作場所</h1><p>設定表の項目名と、カメラのどこで変えるか</p></div>
+      ${g.length ? `<dl class="gloss">${g.map((x) => `<dt>${esc(x.t)}</dt><dd>${esc(x.d)}${x.op ? `<span class="op">操作：${esc(x.op)}</span>` : ""}</dd>`).join("")}</dl>` : `<p class="foot">用語はまだ登録されていません。</p>`}`;
   }
 
   function renderBody(body) {
@@ -105,15 +147,18 @@
   function lessonDetail(id) {
     const l = lessonById[id];
     if (!l) return learnList();
-    setTab("learn", true);
+    setTab("learn", true, "#/learn");
     const read = store.get("read", {});
     const idx = LESSONS.indexOf(l);
     const next = LESSONS[idx + 1];
+    const used = SCENES.filter((x) => (x.lessons || []).includes(id));
     view.innerHTML = `
       <div class="page-head"><h1>${esc(l.title)}</h1><p>${esc(l.lead)}</p></div>
       <div class="body">${renderBody(l.body)}</div>
       ${l.sim ? `<div id="sim"></div>` : ""}
       <button class="read-btn ${read[id] ? "done" : ""}" id="readBtn">${read[id] ? "読了済み" : "読んだ"}</button>
+      ${QUIZ.some((q) => q.l === id) ? `<a class="read-btn alt" href="#/quiz/${id}">この講座の問題を解く</a>` : ""}
+      ${used.length ? `<h2 class="sec">この講座を使うシーン</h2><div class="links">${used.map((u) => `<a href="#/scene/${u.id}">${esc(u.title)}</a>`).join("")}</div>` : ""}
       ${next ? `<h2 class="sec">次</h2><div class="links"><a href="#/lesson/${next.id}">${esc(next.title)}</a></div>` : ""}`;
     if (l.sim) Sim.mount(document.getElementById("sim"));
     view.onclick = (e) => {
@@ -126,22 +171,41 @@
   }
 
   // ---------- 問題 ----------
-  // 間違えた問題は3問後にもう一度出す。正解した問題は後回し
-  function quiz() {
-    setTab("quiz", false);
+  // 間違えた問題は3問後にもう一度出す。正解した問題は後回し。lessonId があればその講座の問題だけ
+  function quiz(lessonId) {
+    const filtered = !!(lessonId && lessonById[lessonId] && QUIZ.some((q) => q.l === lessonId));
+    setTab("quiz", filtered, "#/learn");
     const stats = store.get("quiz", {}); // { index: { ok, ng } }
-    let queue = QUIZ.map((_, i) => i).sort((a, b) => {
+    let pool = QUIZ.map((_, i) => i);
+    if (filtered) pool = pool.filter((i) => QUIZ[i].l === lessonId);
+    const total = pool.length;
+    let queue = pool.slice().sort((a, b) => {
       const sa = stats[a] || { ok: 0, ng: 0 }, sb = stats[b] || { ok: 0, ng: 0 };
       return (sa.ok - sa.ng) - (sb.ok - sb.ng) || Math.random() - 0.5;
     });
     let done = 0, right = 0;
+    const missed = [];
+    const mastered = () => pool.filter((i) => { const s = stats[i]; return s && s.ok > s.ng && s.ok >= 1; }).length;
+    const title = filtered ? `<p class="quiz-scope">${esc(lessonById[lessonId].title)} の問題　<a href="#/quiz">全問に戻す</a></p>` : "";
+
+    const finish = () => {
+      const ls = [...new Set(missed)].filter((l) => lessonById[l]);
+      view.onclick = (e) => { if (e.target.id === "again") { quiz(lessonId); window.scrollTo(0, 0); } };
+      view.innerHTML = `
+        ${title}
+        <div class="page-head"><h1>${total}問 終わりました</h1><p>正解 ${right} ／ ${total}　習得 ${mastered()} ／ ${total}</p></div>
+        ${ls.length ? `<h2 class="sec">間違えた問題の講座</h2><div class="links">${ls.map((l) => `<a href="#/lesson/${l}">${esc(lessonById[l].title)}</a>`).join("")}</div>` : `<p>全部、最初の答えで正解でした。</p>`}
+        <button class="next-btn" id="again">もう一周</button>`;
+    };
 
     const draw = () => {
+      if (!total) { view.innerHTML = `<p class="foot">問題がありません。</p>`; return; }
       const qi = queue[0];
       const q = QUIZ[qi];
       const order = q.c.map((_, i) => i).sort(() => Math.random() - 0.5);
       view.innerHTML = `
-        <div class="quiz-meta"><span>${done} 問目まで ／ 正解 ${right}</span><span>全${QUIZ.length}問</span></div>
+        ${title}
+        <div class="quiz-meta"><span>${done} 問回答 ／ 正解 ${right}</span><span>習得 ${mastered()} / ${total}</span></div>
         <div class="quiz-q">${esc(q.q)}</div>
         <div class="choices">${order.map((ci, k) => `<button data-c="${ci}"><span>${"ABCD"[k]}</span>${esc(q.c[ci])}</button>`).join("")}</div>
         <div id="ans"></div>`;
@@ -153,23 +217,24 @@
             x.disabled = true;
             if (Number(x.dataset.c) === q.a) x.classList.add("right");
           });
-          if (!ok) b.classList.add("wrong");
+          if (!ok) { b.classList.add("wrong"); missed.push(q.l); }
           const s = stats[qi] || { ok: 0, ng: 0 };
           ok ? s.ok++ : s.ng++;
           stats[qi] = s; store.set("quiz", stats);
           done++; if (ok) right++;
           queue.shift();
           if (ok) queue.push(qi); else queue.splice(Math.min(3, queue.length), 0, qi);
+          const last = done >= total;
           document.getElementById("ans").innerHTML = `
             <div class="answer">
               <div class="verdict ${ok ? "" : "ng"}">${ok ? "正解" : "不正解"}</div>
               <p>${esc(q.e)}</p>
               <div class="links"><a href="#/lesson/${q.l}">講座：${esc(lessonById[q.l].title)}</a></div>
-              <button class="next-btn" id="next">次の問題</button>
+              <button class="next-btn" id="next">${last ? "結果を見る" : "次の問題"}</button>
             </div>`;
           return;
         }
-        if (e.target.id === "next") { draw(); window.scrollTo(0, 0); }
+        if (e.target.id === "next") { done >= total ? finish() : draw(); window.scrollTo(0, 0); }
       };
     };
     draw();
@@ -294,14 +359,21 @@
     if (page === "scene") sceneDetail(id);
     else if (page === "learn") learnList();
     else if (page === "lesson") lessonDetail(id);
-    else if (page === "quiz") quiz();
+    else if (page === "quiz") quiz(id);
+    else if (page === "glossary") glossaryPage();
     else if (page === "mr") mrPage();
     else if (page === "check") checkPage();
     else fieldList();
     window.scrollTo(0, 0);
   }
-  backBtn.onclick = () => (history.length > 1 ? history.back() : (location.hash = "#/"));
-  window.addEventListener("hashchange", route);
+  backBtn.onclick = () => {
+    if (navCount > 0) { navCount--; backing = true; history.back(); }
+    else location.hash = backTo;
+  };
+  window.addEventListener("hashchange", () => {
+    if (backing) backing = false; else navCount++;
+    route();
+  });
   route();
 
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

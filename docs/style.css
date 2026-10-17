@@ -31,7 +31,7 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--paper); color: var(--ink);
   font-family: var(--sans); font-size: 16px; line-height: 1.7;
-  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 a { color: inherit; }
 button { font: inherit; color: inherit; }
@@ -58,7 +58,7 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px 32px; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tabs a {
-  text-align: center; text-decoration: none; padding: 12px 0 14px;
+  text-align: center; text-decoration: none; min-height: 52px; display: flex; align-items: center; justify-content: center;
   font-size: 14px; letter-spacing: .08em; color: var(--muted); position: relative;
 }
 .tabs a.on { color: var(--ink); font-weight: 600; }
@@ -77,7 +77,7 @@ h2.sec {
 .cats { display: flex; gap: 18px; overflow-x: auto; padding: 14px 0 0; margin: 0 -16px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; border-bottom: 1px solid var(--rule); }
 .cats::-webkit-scrollbar { display: none; }
 .cats button {
-  background: none; border: 0; padding: 4px 0 10px; white-space: nowrap; cursor: pointer;
+  background: none; border: 0; padding: 4px 0; min-height: 46px; white-space: nowrap; cursor: pointer;
   font-size: 15px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .cats button.on { color: var(--ink); border-color: var(--ink); font-weight: 600; }
@@ -102,11 +102,11 @@ h2.sec {
 }
 .lcd div { padding: 10px 8px 9px; border-left: 1px solid #ffffff14; min-width: 0; }
 .lcd div:first-child { border-left: 0; }
-.lcd small { display: block; font-size: 10px; color: var(--lcd-dim); letter-spacing: .1em; }
+.lcd small { display: block; font-size: 11px; color: var(--lcd-dim); letter-spacing: .1em; }
 .lcd b { display: block; font-size: 19px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lcd b.long { font-size: 15px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; padding-top: 2px; }
 .lcd b.auto { color: var(--lcd-dim); font-size: 14px; padding-top: 4px; }
-.lcd-note { font-size: 12px; color: var(--muted); margin: 0; }
+.lcd-note { font-size: 13px; color: var(--muted); margin: 0; }
 
 /* 設定表 */
 .settings { width: 100%; border-collapse: collapse; }
@@ -188,7 +188,7 @@ ul.plain li, ol.plain li { margin: 6px 0; }
 .mr-head h3 { margin: 0; font-size: 17px; }
 .mr-head p { margin: 0; font-size: 13px; color: var(--muted); }
 
-.foot { font-size: 12px; color: var(--muted); margin-top: 32px; line-height: 1.6; }
+.foot { font-size: 13px; color: var(--muted); margin-top: 32px; line-height: 1.6; }
 
 /* 診断 */
 .pick { display: block; text-align: center; margin-top: 18px; }
@@ -204,3 +204,31 @@ ul.plain li, ol.plain li { margin: 6px 0; }
 .diag .d-t em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; margin-right: 8px; }
 .diag p { margin: 4px 0 6px; font-size: 14px; }
 .diag .links a { font-size: 13px; }
+
+/* 追加：用語・早見・要点 */
+.term { background: none; border: 0; padding: 12px 0; margin: -12px 0; min-height: 44px; font: inherit; color: var(--ink); text-align: left; text-decoration: underline dotted var(--accent); text-underline-offset: 4px; cursor: pointer; }
+.term[aria-expanded="true"] { text-decoration-style: solid; }
+.settings tr.gl[hidden] { display: none; }
+.settings tr.gl td { background: var(--paper-2); padding: 10px 12px; font-size: 14px; }
+.settings tr.gl p { margin: 0 0 6px; }
+.settings tr.gl .op, .gloss .op { color: var(--accent); font-size: 13px; }
+.keyv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.keyv div { border: 1px solid var(--ink); padding: 8px 10px; min-width: 0; }
+.keyv small { display: block; font-size: 12px; color: var(--muted); letter-spacing: .1em; line-height: 1.4; }
+.keyv b { display: block; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
+.mrdiff { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.final { margin: 32px 0 0; padding: 12px 0; border-top: 1px solid var(--ink); font-family: var(--serif); font-size: 16px; }
+.quick .sec { margin-top: 18px; }
+.quick .links a { display: inline-flex; align-items: center; min-height: 44px; }
+.dial-ref { display: block; text-decoration: none; }
+.dial-ref span { display: grid; grid-template-columns: 26px auto 1fr; gap: 8px; align-items: baseline; padding: 6px 0; font-size: 14px; border-bottom: 1px solid var(--rule); }
+.dial-ref b { font-family: var(--mono); color: var(--accent); }
+.dial-ref i { font-style: normal; font-size: 12px; color: var(--muted); min-width: 0; }
+.read-btn.alt { display: block; text-align: center; text-decoration: none; margin-top: 10px; }
+.list .acc { font-size: 11px; color: var(--muted); }
+.quiz-scope { font-size: 13px; color: var(--muted); margin: 16px 0 0; }
+.quiz-scope a { color: var(--accent); }
+.gloss { margin: 12px 0 0; }
+.gloss dt { font-weight: 600; margin-top: 16px; }
+.gloss dd { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+.gloss .op { display: block; }
